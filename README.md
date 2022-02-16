@@ -1,2 +1,2 @@
-# nft-puzzle-standard
+# NFTp
 NFTp standard of NFT tokens suitable for Waves blockchain
