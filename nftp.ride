@@ -1,0 +1,50 @@
+{-# STDLIB_VERSION 5 #-}
+{-# CONTENT_TYPE DAPP #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+
+
+func tryGetInteger(key: String) = {
+  match getInteger(this, key) {
+      case b:Int => b
+      case _ => 0
+  }
+}
+
+func tryGetString(key: String) = {
+  match getString(this, key) {
+      case b:String => b
+      case _ => ""
+  }
+}
+
+
+@Callable(i)
+func createNFT(nftName: String, nftDesc: String, image: String, collectionName: String) = {
+  if (image.indexOf("https://") != 0) then {
+    throw("https link to image required")
+  } else {
+    let asset = Issue(nftName, nftDesc, 1, 0, false, unit, 0)
+    let assetId = asset.calculateAssetId()
+    let assetIdStr = assetId.toBase58String()
+
+    let collectionDomain = i.caller.toString() + "_" + if (collectionName.size() > 0) then {collectionName} else {"basic"}
+    let nftNum = tryGetInteger("collection_" + collectionDomain + "_size") + 1
+    
+    ([
+      StringEntry("nft_" + assetIdStr + "_data", "{'collection': '"+collectionDomain+"', 'num': "+nftNum.toString()+"}"),
+      StringEntry("nft_" + assetIdStr + "_image", image),
+      StringEntry("nft_" + assetIdStr + "_issuer", i.caller.toString()),
+
+      IntegerEntry("collection_" + collectionDomain + "_size", nftNum),
+      StringEntry("collection_" + collectionDomain + "_nfts", tryGetString("collection_" + collectionDomain + "_nfts") + "," + assetIdStr),
+
+      asset,
+      ScriptTransfer(i.caller, 1, assetId)
+    ], assetIdStr)
+  }
+}
+
+
+@Verifier(tx)
+func verify() = sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
+
