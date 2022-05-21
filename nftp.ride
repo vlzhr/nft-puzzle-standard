@@ -17,10 +17,15 @@ func tryGetString(key: String) = {
   }
 }
 
+func checkNFT(asset: Asset) = {
+  asset.issuer.bytes == this.bytes && asset.decimals == 0 && asset.reissuable == false && asset.quantity == 1
+}
+
 
 @Callable(i)
 func createNFT(nftName: String, nftDesc: String, image: String, collectionName: String) = {
-  if (image.indexOf("https://") != 0) then {
+  if (i.caller.toString() != "3P3pDosq4GCwfJkvq4yqKvvoTwmoqc9qPmo" && i.caller.toString() != "3PPgeYTWMRZ7S7jSLpnVuKKB9r6XuDk3ndC") then {throw("issuance of new NFTs is limited")}
+  else if (image.indexOf("https://") != 0) then {
     throw("https link to image required")
   } else {
     let asset = Issue(nftName, nftDesc, 1, 0, false, unit, 0)
@@ -36,7 +41,7 @@ func createNFT(nftName: String, nftDesc: String, image: String, collectionName: 
       StringEntry("nft_" + assetIdStr + "_issuer", i.caller.toString()),
 
       IntegerEntry("collection_" + collectionDomain + "_size", nftNum),
-      StringEntry("collection_" + collectionDomain + "_nfts", tryGetString("collection_" + collectionDomain + "_nfts") + "," + assetIdStr),
+      StringEntry("collection_" + collectionDomain + "_assetId_" + assetIdStr, assetIdStr),
 
       asset,
       ScriptTransfer(i.caller, 1, assetId)
@@ -44,7 +49,37 @@ func createNFT(nftName: String, nftDesc: String, image: String, collectionName: 
   }
 }
 
+@Callable(i)
+func burnNFT() = {
+  let assetId = i.payments[0].value().assetId.value()
+  let asset = assetInfo(assetId).value()
+
+  if (i.payments[0].value().amount == 1 && asset.checkNFT()) then {
+    let assetIdStr = assetId.toBase58String()
+    let issuer = tryGetString("nft_" + assetIdStr + "_issuer")
+    let data = tryGetString("nft_" + assetIdStr + "_data")
+
+    let partsData = data.split(", ")
+    let partsCollection = partsData[0].split(": ")
+    let collectionDomain = partsCollection[1].drop(1).dropRight(1)
+
+    let nftNum = tryGetInteger("collection_" + collectionDomain + "_size")
+    if (nftNum > 0) then {
+      let updateCollection = if (nftNum == 1)
+        then DeleteEntry("collection_" + collectionDomain + "_size")
+        else IntegerEntry("collection_" + collectionDomain + "_size", nftNum - 1)
+      [
+        updateCollection,
+        Burn(assetId, 1),
+
+        DeleteEntry("nft_" + assetIdStr + "_data"),
+        DeleteEntry("nft_" + assetIdStr + "_image"),
+        DeleteEntry("nft_" + assetIdStr + "_issuer"),
+        DeleteEntry("collection_" + collectionDomain + "_assetId_" + assetIdStr)
+      ]
+    } else throw("Ivalid collection name")
+  } else throw("Ivalid NFT attached")
+}
 
 @Verifier(tx)
 func verify() = sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
-
